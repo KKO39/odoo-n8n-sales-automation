@@ -1,0 +1,11 @@
+# Byte-compiled / python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Odoo configuration and session files
+*.log
+*.pid
+.idea/
+.vscode/

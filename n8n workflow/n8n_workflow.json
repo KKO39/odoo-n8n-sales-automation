@@ -1,0 +1,3134 @@
+{
+  "name": "AI ERP Assistant - Shopping Cart",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        592,
+        1504
+      ],
+      "id": "512c9f3f-2233-4d00-804c-ed767e7f2f3b",
+      "name": "Telegram Trigger",
+      "webhookId": "44da10e5-3c59-491b-803c-26cbfdffeadc",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const data = $json;\nconst message = data.message || {};\nconst callback = data.callback_query || {};\n\nconst chat_id = message.chat?.id || callback.message?.chat?.id || null;\nconst telegram_id = message.from?.id || callback.from?.id || null;\nconst first_name = message.from?.first_name || callback.from?.first_name || 'Telegram Customer';\nconst message_text = (message.text || '').trim();\nconst callback_data = callback.data || '';\n\nlet intent = 'other';\nlet product_id = 0;\n\n// add_101 / edit_101 / remove_101\nconst m = callback_data.match(/^(add|edit|remove)_(\\d+)$/);\nif (m) product_id = Number(m[2]);\n\nif (callback_data) {\n  if (callback_data === 'place_order' || callback_data === 'start_order') intent = 'start_order';\n  else if (callback_data === 'show_products' || callback_data === 'add_more') intent = 'show_products';\n  else if (callback_data === 'search_product') intent = 'search_prompt';\n  else if (callback_data === 'view_cart') intent = 'view_cart';\n  else if (callback_data === 'checkout') intent = 'checkout';\n  else if (callback_data === 'submit_order') intent = 'submit_order';\n  else if (callback_data === 'order_yes') intent = 'confirmation_yes';\n  else if (callback_data === 'order_no') intent = 'confirmation_no';\n  else if (callback_data === 'change_address') intent = 'change_address';\n  else if (callback_data === 'noop') intent = 'noop';\n  else if (m && m[1] === 'add') intent = 'add_to_cart';\n  else if (m && m[1] === 'edit') intent = 'edit_quantity';\n  else if (m && m[1] === 'remove') intent = 'remove_item';\n} else if (message_text) {\n  intent = 'customer_message';\n}\n\nreturn {\n  json: {\n    chat_id,\n    telegram_id,\n    first_name,\n    message_text,\n    callback_data,\n    callback_query_id: callback.id || null,\n    intent,\n    product_id\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        1504
+      ],
+      "id": "b9bb7f7d-3a0c-49de-ad1b-81b28ff20672",
+      "name": "Normalize Input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "de790774-47a5-42b3-b654-eb82bba666a8",
+              "leftValue": "={{ !!$json.callback_query_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        1280
+      ],
+      "id": "ebdd9d44-dd7f-47d4-912b-748015e2ef7d",
+      "name": "Has Callback?"
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $json.callback_query_id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1376,
+        1280
+      ],
+      "id": "acceca41-4fdd-427d-8d03-a992b13b2c37",
+      "name": "Answer Callback",
+      "webhookId": "72dc56df-a7a2-48fe-beba-1a82a1253273",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH old AS (\n  SELECT awaiting FROM pending_order WHERE telegram_id = $1::bigint\n), clr AS (\n  UPDATE pending_order SET awaiting = NULL, updated_at = now()\n  WHERE telegram_id = $1::bigint AND awaiting IS NOT NULL\n  RETURNING 1\n)\nSELECT $1::bigint AS telegram_id,\n       (SELECT awaiting FROM old) AS awaiting,\n       (SELECT status FROM pending_orders\n         WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout', 'submitting')\n         ORDER BY id DESC LIMIT 1) AS cart_status",
+        "options": {
+          "queryReplacement": "={{ [$('Normalize Input').first().json.telegram_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1120,
+        1504
+      ],
+      "id": "327a10dd-c9da-429d-8349-84009159f1be",
+      "name": "Load Session",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decides the final intent. Text messages depend on what the bot is waiting for\n// (pending_order.awaiting: search | qty:<product_id> | address).\nconst n = $('Normalize Input').first().json;\nconst s = $input.first()?.json || {};\nconst awaiting = s.awaiting || '';\n\n// Burmese digits -> ASCII digits\nconst toAscii = (t) => t.replace(/[၀-၉]/g, (d) => '၀၁၂၃၄၅၆၇၈၉'.indexOf(d));\n\nlet intent = n.intent;\nlet product_id = n.product_id || 0;\nlet quantity = 0;\nlet search_term = '';\nlet delivery_address = '';\nlet note = '';\n\n// \"Change Address\" button: always ask for the address again\nif (intent === 'change_address') { intent = 'checkout'; note = 'change'; }\n\nif (intent === 'customer_message') {\n  const text = n.message_text;\n  const lower = text.toLowerCase();\n\n  if (/^\\/(start|menu)\\b/.test(lower) ||\n      /^(hi|hello|hey|good (morning|evening|afternoon)|mingalaba|မင်္ဂလာပါ)(\\s|[!.,]|$)/i.test(text)) {\n    intent = 'greeting';\n  } else if (/^\\/cart\\b/.test(lower)) {\n    intent = 'view_cart';\n  } else if (/^\\/products\\b/.test(lower)) {\n    intent = 'show_products';\n  } else if (/^\\/search\\b/.test(lower)) {\n    const q = text.replace(/^\\/search\\s*/i, '').trim();\n    if (q) { intent = 'search_input'; search_term = q; } else { intent = 'search_prompt'; }\n  } else if (awaiting === 'search') {\n    intent = 'search_input';\n    search_term = text;\n  } else if (awaiting.startsWith('qty:')) {\n    product_id = Number(awaiting.split(':')[1]) || 0;\n    const q = toAscii(text).trim();\n    if (/^\\d{1,3}$/.test(q)) { intent = 'qty_input'; quantity = Number(q); }\n    else { intent = 'edit_quantity'; note = 'invalid'; }\n  } else if (awaiting === 'address') {\n    if (text.length >= 5) { intent = 'address_input'; delivery_address = text.slice(0, 500); }\n    else { intent = 'checkout'; note = 'invalid'; }\n  } else {\n    intent = 'ai_text';\n  }\n}\n\nreturn [{\n  json: {\n    chat_id: n.chat_id,\n    telegram_id: n.telegram_id,\n    first_name: n.first_name,\n    message_text: n.message_text,\n    callback_data: n.callback_data,\n    callback_query_id: n.callback_query_id,\n    intent,\n    product_id,\n    quantity,\n    search_term,\n    delivery_address,\n    note,\n    awaiting,\n    cart_status: s.cart_status || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        1504
+      ],
+      "id": "3314699d-be32-47d0-ac79-c5f37b8bcca4",
+      "name": "Route Intent"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "greeting",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "14e32189-c36f-453e-b146-ea2e3d996754"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "greeting"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "start_order",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "53c194d6-0881-42aa-a730-48d1b58a118c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "start_order"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "show_products",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "7cf0ae62-49e4-4892-8a8c-49cacc456db2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "show_products"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "search_prompt",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "68f4fbe3-e5c5-49a4-8e9f-d64cb1f9914c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "search_prompt"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "search_input",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "ce77187c-6fb1-4697-868b-5e1f1bfbcc72"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "search_input"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "add_to_cart",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4a7c3714-b475-4a2b-afa6-c11948f1fb18"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "add_to_cart"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "view_cart",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9cd1e844-4cee-4d81-bde6-a46413850135"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "view_cart"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "edit_quantity",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "06dabe36-6b0d-4c75-9799-d765f02897b2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "edit_quantity"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "qty_input",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "52c2aab7-18f3-4efc-ab0e-af65f5127a25"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "qty_input"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "remove_item",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8030f968-4a66-4766-8c35-905c8f6aba5c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "remove_item"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "checkout",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "5b8e382a-0fd4-4fe9-b74d-7cc8cc61b5e2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "checkout"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "address_input",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "bac9318d-3196-4e61-b99e-06e888bc2a94"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "address_input"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "submit_order",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e1520842-9589-4397-8b24-03dd82f0f099"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "submit_order"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "confirmation_yes",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "d1d9deb9-9373-422d-acff-662275a71a97"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "confirmation_yes"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "confirmation_no",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "85565dd3-1677-4638-8c00-19ba19c3ffe6"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "confirmation_no"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "ai_text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "3c1abea2-c8c0-49dc-9f5f-3b6fc6033992"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ai_text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "noop",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "abe2961a-3e13-47c7-9935-f5cfbff1e73e"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "noop"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "other",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "de7664d0-b349-434b-bc51-34d1afbc70bd"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "other"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        1632,
+        1504
+      ],
+      "id": "416bddf2-27e7-475f-8de7-1e31408fdb5f",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "Hello! 👋\n\nWelcome to our shop.\nHow can I help you today?",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛍 Start Shopping",
+                    "additionalFields": {
+                      "callback_data": "start_order"
+                    }
+                  },
+                  {
+                    "text": "🔍 Search Product",
+                    "additionalFields": {
+                      "callback_data": "search_product"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2000,
+        0
+      ],
+      "id": "d1b1885b-2d52-456c-b011-a51086da220f",
+      "name": "Greeting Reply",
+      "webhookId": "17d29363-5f32-4196-a634-6184a268e229",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "🛒 Welcome to Shopping Cart!\n\nYou can add several products to one order.\nWhat would you like to do?",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛍 Browse Products",
+                    "additionalFields": {
+                      "callback_data": "show_products"
+                    }
+                  },
+                  {
+                    "text": "🔍 Search Product",
+                    "additionalFields": {
+                      "callback_data": "search_product"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2000,
+        240
+      ],
+      "id": "b89f53d8-44f7-41f4-9704-56b8cc950838",
+      "name": "Shopping Menu",
+      "webhookId": "1d6b3163-40c4-43b3-aaef-842c962bba17",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "Sorry, I didn't understand your message.\n\nYou can browse products, search by name or code, or view your cart.",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛍 Browse Products",
+                    "additionalFields": {
+                      "callback_data": "show_products"
+                    }
+                  },
+                  {
+                    "text": "🔍 Search Product",
+                    "additionalFields": {
+                      "callback_data": "search_product"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2000,
+        4160
+      ],
+      "id": "f174f346-d3fc-4aee-aaf8-ce5399ea1fe9",
+      "name": "Other Reply",
+      "webhookId": "7a83e245-99a2-4182-ae44-a40671eb71b1",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://172.18.0.1:8080/api/n8n/v1/search_products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2000,
+        464
+      ],
+      "id": "17798823-670c-4392-938e-2a9eeea14adc",
+      "name": "List Products",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "stn3o1ozupNrzBXr",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://172.18.0.1:8080/api/n8n/v1/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search",
+              "value": "={{ $json.search_term }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2000,
+        928
+      ],
+      "id": "418fb460-8755-497f-8352-8408c93ddb77",
+      "name": "Search Products",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "stn3o1ozupNrzBXr",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- settings ----\nconst ENFORCE_STOCK = false;   // true  => products with stock <= 0 cannot be added to the cart\nconst MAX_ITEMS = 8;           // max product cards per message batch\n// ------------------\nconst route = $('Route Intent').first().json;\nconst chat_id = route.chat_id;\n\nconst num = (v) => { const x = Number(v); return isFinite(x) ? x : 0; };\nconst fmt = (v) => num(v).toLocaleString('en-US', { maximumFractionDigits: 2 });\n\n// /search_products -> { data: [...] }   /products?search= -> { found, products: [...] }\nconst all = $input.all().map((i) => i.json);\nlet list = [];\nif (all.length === 1 && Array.isArray(all[0].data)) list = all[0].data;\nelse if (all.length === 1 && Array.isArray(all[0].products)) list = all[0].products;\nelse if (all.length >= 1 && all[0] && all[0].id !== undefined) list = all;\n\nconst products = list\n  .map((p) => ({\n    id: Number(p.id),\n    name: p.name || p.display_name || 'Product',\n    code: p.default_code || p.code || '',\n    price: num(p.price ?? p.list_price),\n    currency: p.currency || '',\n    stock: (p.stock ?? p.qty_available ?? null)\n  }))\n  .filter((p) => p.id)\n  .slice(0, MAX_ITEMS);\n\nif (!products.length) {\n  const term = route.search_term ? ` for \"${route.search_term}\"` : '';\n  return [{ json: {\n    chat_id,\n    text: `😔 No products found${term}.\\nTry another name or product code.`,\n    button_text: '🔍 Search Product',\n    button_cb: 'search_product',\n    cache: null\n  } }];\n}\n\nreturn products.map((p) => {\n  const stockKnown = p.stock !== null && p.stock !== undefined && p.stock !== '';\n  const canAdd = !ENFORCE_STOCK || !stockKnown || num(p.stock) > 0;\n  let text = `📦 ${p.name}`;\n  if (p.code) text += `\\nCode: ${p.code}`;\n  text += `\\nPrice: ${fmt(p.price)} ${p.currency}`.trimEnd();\n  if (stockKnown) text += `\\nStock: ${fmt(p.stock)}`;\n  return { json: {\n    chat_id,\n    text,\n    button_text: canAdd ? '➕ Add to Cart' : '❌ Out of Stock',\n    button_cb: canAdd ? `add_${p.id}` : 'noop',\n    cache: { id: p.id, name: p.name, code: p.code, price: p.price, currency: p.currency, stock: stockKnown ? num(p.stock) : null }\n  } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        704
+      ],
+      "id": "a966bd9e-8087-4b34-8df1-f51f2b0d03ba",
+      "name": "Format Products"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "={{ $json.button_text }}",
+                    "additionalFields": {
+                      "callback_data": "={{ $json.button_cb }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2512,
+        784
+      ],
+      "id": "147adaf9-8f39-4688-9e80-33167b5b41b3",
+      "name": "Product Card",
+      "webhookId": "502617c8-cf95-4190-b6ef-098b11f67bed",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO product_cache (product_id, name, code, price, currency, stock, updated_at)\nSELECT (p->>'id')::int, p->>'name', p->>'code', (p->>'price')::numeric,\n       p->>'currency', NULLIF(p->>'stock', '')::numeric, now()\nFROM jsonb_array_elements($1::jsonb) AS p\nON CONFLICT (product_id) DO UPDATE SET\n  name = EXCLUDED.name, code = EXCLUDED.code, price = EXCLUDED.price,\n  currency = EXCLUDED.currency, stock = EXCLUDED.stock, updated_at = now()",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($input.all().map(i => i.json.cache).filter(c => c))] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2512,
+        592
+      ],
+      "id": "009cbabe-9f97-424b-94e0-eba62f622a95",
+      "name": "Cache Products",
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Format Products').first().json.chat_id }}",
+        "text": "What would you like to do next?",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔍 Search Product",
+                    "additionalFields": {
+                      "callback_data": "search_product"
+                    }
+                  },
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2784,
+        784
+      ],
+      "id": "44777f60-2770-4b7b-8a4b-db39845faeaa",
+      "name": "Shop Footer",
+      "executeOnce": true,
+      "webhookId": "bc1fa4bd-2431-47c6-b1b0-2762b66999b7",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pending_order (telegram_id, awaiting) VALUES ($1::bigint, 'search')\nON CONFLICT (telegram_id) DO UPDATE SET awaiting = 'search', updated_at = now()",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.telegram_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        1152
+      ],
+      "id": "f815d509-22be-4b00-a95f-eb9abff5f348",
+      "name": "Set Awaiting Search",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "🔍 Type the product name or product code you are looking for.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2256,
+        1152
+      ],
+      "id": "a9f542ae-cf9e-4003-bf67-d63e2333b600",
+      "name": "Ask Search",
+      "webhookId": "a3736a19-509f-4d33-92c0-cf04f5279d32",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n),\nreopened AS (\n  UPDATE pending_orders SET status = 'cart', updated_at = NOW()\n  WHERE id = (SELECT id FROM active)\n  RETURNING id\n),\ncreated AS (\n  INSERT INTO pending_orders (chat_id, status)\n  SELECT $1::bigint, 'cart' WHERE NOT EXISTS (SELECT 1 FROM active)\n  ON CONFLICT DO NOTHING\n  RETURNING id\n),\ncart AS (\n  SELECT id FROM reopened UNION ALL SELECT id FROM created\n),\nproduct AS (\n  SELECT product_id, name, price, currency FROM product_cache WHERE product_id = $2::int\n),\nins AS (\n  INSERT INTO pending_order_items (order_id, product_id, product_name, quantity, price, subtotal, currency)\n  SELECT cart.id, product.product_id, product.name, 1,\n         COALESCE(product.price, 0), COALESCE(product.price, 0), product.currency\n  FROM cart CROSS JOIN product\n  ON CONFLICT (order_id, product_id) DO UPDATE SET\n    quantity = pending_order_items.quantity + 1,\n    subtotal = (pending_order_items.quantity + 1) * EXCLUDED.price,\n    price = EXCLUDED.price\n  RETURNING product_name, quantity, price, subtotal, currency\n)\nSELECT * FROM ins",
+        "options": {
+          "queryReplacement": "={{\n  [\n    $('Route Intent').first().json.chat_id,\n    $('Route Intent').first().json.product_id\n  ]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        1328
+      ],
+      "id": "ba041585-135c-4e67-bd14-4026d58df5db",
+      "name": "Add To Cart",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "={{ $json.product_name ? '✅ Added to cart: ' + $json.product_name + '\\nQuantity in cart: ' + Number($json.quantity) : '⚠️ This product is no longer available. Please search again.' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  },
+                  {
+                    "text": "➕ Add More",
+                    "additionalFields": {
+                      "callback_data": "add_more"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Checkout",
+                    "additionalFields": {
+                      "callback_data": "checkout"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2272,
+        1312
+      ],
+      "id": "073bf81c-e435-4efd-b0d1-7967e532266b",
+      "name": "Added Reply",
+      "webhookId": "6148d7aa-20bf-481c-8d5c-ed2231e9700b",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n)\nSELECT poi.product_id, poi.product_name, poi.quantity, poi.price, poi.currency,\n       poi.quantity * poi.price AS subtotal\nFROM pending_order_items poi\nWHERE poi.order_id = (SELECT id FROM active)\nORDER BY poi.id",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        1520
+      ],
+      "id": "8f4e1d80-fabb-4318-8ad9-19a21ba43af4",
+      "name": "Load Cart Items",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $('Route Intent').first().json;\nconst rows = $input.all().map((i) => i.json).filter((r) => r.product_id);\nconst num = (v) => { const x = Number(v); return isFinite(x) ? x : 0; };\nconst fmt = (v) => num(v).toLocaleString('en-US', { maximumFractionDigits: 2 });\n\nif (!rows.length) return [{ json: { chat_id: route.chat_id, empty: true } }];\n\nconst currency = rows[0].currency || '';\nconst total = rows.reduce((s, r) => s + num(r.quantity) * num(r.price), 0);\nconst summary = `🛒 Your Shopping Cart\\nItems: ${rows.length}\\nTotal: ${fmt(total)} ${currency}`.trimEnd();\n\nreturn rows.map((r, i) => ({ json: {\n  chat_id: route.chat_id,\n  empty: false,\n  product_id: r.product_id,\n  text: `${i + 1}. ${r.product_name}\\nQty: ${fmt(r.quantity)} × ${fmt(r.price)} = ${fmt(num(r.quantity) * num(r.price))} ${r.currency || ''}`.trimEnd(),\n  summary\n} }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        1472
+      ],
+      "id": "a27a6e94-d260-4374-bec5-f7b2bf9fdb16",
+      "name": "Format Cart"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "1c388051-235b-48a7-a214-2dc7d8449855",
+              "leftValue": "={{ $json.empty === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2512,
+        1472
+      ],
+      "id": "c85a7110-6d86-4b9d-9a5c-fac2cff9adc0",
+      "name": "Cart Empty?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "🛒 Your cart is empty.\n\nBrowse or search for a product to add.",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛍 Browse Products",
+                    "additionalFields": {
+                      "callback_data": "show_products"
+                    }
+                  },
+                  {
+                    "text": "🔍 Search Product",
+                    "additionalFields": {
+                      "callback_data": "search_product"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2784,
+        1360
+      ],
+      "id": "48c03cc8-222f-46ab-9a1c-df6cb1e9af82",
+      "name": "Cart Empty Reply",
+      "webhookId": "7e70ad71-f8dd-4688-a26d-e9b7cae502f9",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✏️ Edit Qty",
+                    "additionalFields": {
+                      "callback_data": "=edit_{{ $json.product_id }}"
+                    }
+                  },
+                  {
+                    "text": "🗑 Remove",
+                    "additionalFields": {
+                      "callback_data": "=remove_{{ $json.product_id }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2784,
+        1552
+      ],
+      "id": "285677dd-fe30-4e45-b075-d351d7930e33",
+      "name": "Cart Item",
+      "webhookId": "e41643ac-7022-4878-b141-d42bc13fe944",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Format Cart').first().json.chat_id }}",
+        "text": "={{ $('Format Cart').first().json.summary }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "➕ Add More",
+                    "additionalFields": {
+                      "callback_data": "add_more"
+                    }
+                  },
+                  {
+                    "text": "✅ Checkout",
+                    "additionalFields": {
+                      "callback_data": "checkout"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3040,
+        1552
+      ],
+      "id": "855e099a-613f-4b93-9d6d-00db03885155",
+      "name": "Cart Summary",
+      "executeOnce": true,
+      "webhookId": "1261011e-0c34-480a-9be7-5f6e31d44a4e",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n),\narmed AS (\n  INSERT INTO pending_order (telegram_id, status, awaiting, updated_at)\n  SELECT $1::bigint, 'cart', 'qty:' || $2::int::text, NOW()\n  WHERE EXISTS (SELECT 1 FROM pending_order_items\n                WHERE order_id = (SELECT id FROM active) AND product_id = $2::int)\n  ON CONFLICT (telegram_id) DO UPDATE SET awaiting = EXCLUDED.awaiting, updated_at = NOW()\n  RETURNING 1\n)\nSELECT i.product_id, i.product_name, i.quantity, i.price, i.currency,\n       (SELECT COUNT(*) FROM armed)::int AS armed\nFROM pending_order_items i\nWHERE i.order_id = (SELECT id FROM active) AND i.product_id = $2::int",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id, $('Route Intent').first().json.product_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        1744
+      ],
+      "id": "624deaba-b9d7-4224-8ab6-8e864b4a53ea",
+      "name": "Set Awaiting Qty",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "={{ $json.product_name ? ($('Route Intent').first().json.note === 'invalid' ? '⚠️ Please send a whole number (0 to 999).\\n\\n' : '') + '✏️ ' + $json.product_name + '\\nCurrent quantity: ' + Number($json.quantity) + '\\n\\nSend the new quantity as a number.\\n(Send 0 to remove this item.)' : 'This item is not in your cart.' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2256,
+        1744
+      ],
+      "id": "d4ec04c6-6927-4748-aa2a-22c41b2f97f8",
+      "name": "Ask Quantity",
+      "webhookId": "8643fbbd-2df8-4290-bd8e-4d21f9207df2",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n),\ndeleted AS (\n  DELETE FROM pending_order_items\n  WHERE order_id = (SELECT id FROM active) AND product_id = $2::int AND $3::numeric = 0\n  RETURNING id\n),\nupdated AS (\n  UPDATE pending_order_items\n  SET quantity = $3::numeric, subtotal = $3::numeric * price\n  WHERE order_id = (SELECT id FROM active) AND product_id = $2::int AND $3::numeric > 0\n  RETURNING id\n)\nSELECT (SELECT COUNT(*) FROM deleted)::int AS deleted_count,\n       (SELECT COUNT(*) FROM updated)::int AS updated_count",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id, $('Route Intent').first().json.product_id, $('Route Intent').first().json.quantity] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        1952
+      ],
+      "id": "f7348e9f-362e-4f1e-9647-269bd14cc0c2",
+      "name": "Update Quantity",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n)\nDELETE FROM pending_order_items\nWHERE order_id = (SELECT id FROM active) AND product_id = $2::int\nRETURNING product_id, product_name, quantity, price, currency",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id, $('Route Intent').first().json.product_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        2144
+      ],
+      "id": "4edb61a5-831c-425c-9a0b-7c7ab8e61c19",
+      "name": "Remove Item",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n),\nitems AS (\n  SELECT COUNT(*)::int AS item_count FROM pending_order_items\n  WHERE order_id = (SELECT id FROM active)\n),\nu AS (\n  UPDATE pending_orders SET status = 'checkout', updated_at = NOW()\n  WHERE id = (SELECT id FROM active) AND (SELECT item_count FROM items) > 0\n  RETURNING id, delivery_address\n),\nneed AS (\n  SELECT ((SELECT item_count FROM items) > 0\n          AND ($2::boolean OR COALESCE(BTRIM((SELECT delivery_address FROM u)), '') = '')) AS need_address\n),\narm AS (\n  INSERT INTO pending_order (telegram_id, status, awaiting, updated_at)\n  SELECT $1::bigint, 'cart', 'address', NOW() WHERE (SELECT need_address FROM need)\n  ON CONFLICT (telegram_id) DO UPDATE SET awaiting = 'address', updated_at = NOW()\n  RETURNING 1\n)\nSELECT (SELECT item_count FROM items) AS item_count,\n       (SELECT delivery_address FROM u) AS delivery_address,\n       (SELECT need_address FROM need) AS need_address",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id, $('Route Intent').first().json.note === 'invalid' || $('Route Intent').first().json.note === 'change'] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        2368
+      ],
+      "id": "a74df032-46ca-43ba-8342-39f110c38b82",
+      "name": "Set Awaiting Address",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "277870ca-dbb9-4258-8663-449709f5f477",
+              "leftValue": "={{ Number($json.item_count) > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2256,
+        2368
+      ],
+      "id": "3915810e-84b1-4f25-b0e3-3d3cba3d3f89",
+      "name": "Cart Has Items?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Route Intent').first().json.chat_id }}",
+        "text": "={{ ($('Route Intent').first().json.note === 'invalid' ? '⚠️ That address looks too short.\\n\\n' : '') + '📍 Please send your delivery address.\\n\\nExample: No. 123, ThuKhaMyaing Street, Hlaing Township, Yangon' + ($json.delivery_address ? '\\n\\nLast used address:\\n' + $json.delivery_address : '') }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2784,
+        2256
+      ],
+      "id": "d6c9cf4b-41dd-41d0-84be-5a2d39223f28",
+      "name": "Ask Address",
+      "webhookId": "48e122ea-f0fe-4c51-9302-e7f340250150",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n),\nu AS (\n  UPDATE pending_orders SET delivery_address = $2::text, status = 'checkout', updated_at = NOW()\n  WHERE id = (SELECT id FROM active)\n  RETURNING id, delivery_address\n)\nSELECT i.product_id, i.product_name, i.quantity, i.price, i.currency,\n       i.quantity * i.price AS subtotal,\n       (SELECT delivery_address FROM u) AS delivery_address\nFROM pending_order_items i\nWHERE i.order_id = (SELECT id FROM u)\nORDER BY i.id",
+        "options": {
+          "queryReplacement": "={{\n  [\n    $('Route Intent').first().json.chat_id,\n    $('Route Intent').first().json.delivery_address\n  ]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        2592
+      ],
+      "id": "1334b72b-836f-4d8f-bb79-31c8c80a31cf",
+      "name": "Save Address",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $('Route Intent').first().json;\nconst rows = $input.all().map((i) => i.json).filter((r) => r.product_name);\nconst num = (v) => { const x = Number(v); return isFinite(x) ? x : 0; };\nconst fmt = (v) => num(v).toLocaleString('en-US', { maximumFractionDigits: 2 });\n\nif (!rows.length) {\n  return [{ json: { chat_id: route.chat_id, text: '🛒 Your cart is empty.\\n\\nSend /products to start shopping.' } }];\n}\nconst currency = rows[0].currency || '';\nconst total = rows.reduce((s, r) => s + num(r.quantity) * num(r.price), 0);\nconst lines = rows.map((r, i) =>\n  `${i + 1}. ${r.product_name} — ${fmt(r.quantity)} × ${fmt(r.price)} = ${fmt(num(r.quantity) * num(r.price))} ${r.currency || ''}`.trimEnd());\n\nconst text = '📋 Order Review\\n\\n' + lines.join('\\n') +\n  `\\n\\nTotal: ${fmt(total)} ${currency}\\n📍 Delivery: ${rows[0].delivery_address || '-'}\\n\\nSubmit this order?`;\nreturn [{ json: { chat_id: route.chat_id, text } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        2592
+      ],
+      "id": "300cf033-a6ae-4db0-b2b7-719b40c095a5",
+      "name": "Format Review"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Submit Order",
+                    "additionalFields": {
+                      "callback_data": "submit_order"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✏️ Edit Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  },
+                  {
+                    "text": "📍 Change Address",
+                    "additionalFields": {
+                      "callback_data": "change_address"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2512,
+        2592
+      ],
+      "id": "98985144-d49c-49c5-8bd2-cce5d32f955e",
+      "name": "Order Review",
+      "webhookId": "dd5650fd-43d0-4d7f-855b-b1a8915a2ef7",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH target AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status = 'checkout'\n    AND COALESCE(BTRIM(delivery_address), '') <> ''\n    AND EXISTS (SELECT 1 FROM pending_order_items WHERE order_id = pending_orders.id)\n  ORDER BY id DESC\n  LIMIT 1\n),\nclaim AS (\n  UPDATE pending_orders po SET status = 'submitting', updated_at = NOW()\n  FROM target t WHERE po.id = t.id\n  RETURNING po.id, po.chat_id, po.delivery_address\n)\nSELECT c.id AS order_id, c.chat_id, c.delivery_address,\n       i.product_id, i.product_name, i.quantity, i.price, i.currency\nFROM claim c\nJOIN pending_order_items i ON i.order_id = c.id\nORDER BY i.id",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        2912
+      ],
+      "id": "5bea11b7-286e-4ae3-baba-aa278d5f0a00",
+      "name": "Claim Order",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $('Route Intent').first().json;\nconst rows = $input.all().map((i) => i.json).filter((r) => r.product_id);\nconst num = (v) => { const x = Number(v); return isFinite(x) ? x : 0; };\n\nif (!rows.length) {\n  return [{ json: {\n    ok: false,\n    chat_id: route.chat_id,\n    text: '⚠️ Nothing to submit.\\nYour cart may be empty, the delivery address is missing, or this order was already submitted.\\n\\nSend /cart to review your cart.'\n  } }];\n}\n\nconst lines = rows.map((r) => ({\n  product_id: Number(r.product_id),\n  quantity: num(r.quantity),\n  price_unit: num(r.price)\n}));\nconst total = lines.reduce((s, l) => s + l.quantity * l.price_unit, 0);\n\nreturn [{ json: {\n  ok: true,\n  chat_id: route.chat_id,\n  telegram_id: route.telegram_id,\n  first_name: route.first_name,\n  delivery_address: rows[0].delivery_address,\n  lines,\n  total,\n  currency: rows[0].currency || '',\n  item_count: lines.length\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        2912
+      ],
+      "id": "deebe383-a6ba-4ee7-ab9c-11a07b999ad5",
+      "name": "Build Payload"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "6e30ebd1-96c5-4122-bcc5-da17cd406864",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2512,
+        2912
+      ],
+      "id": "54767712-1c0a-4b22-bef9-9adab822cddb",
+      "name": "Payload OK?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2784,
+        3040
+      ],
+      "id": "7bda7771-4e7d-4b00-a30d-4cf99d53a472",
+      "name": "Submit Blocked",
+      "webhookId": "624fe25d-c42e-41f8-9ff5-59d00b4c704b",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.18.0.1:8080/api/n8n/v1/customers/telegram/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ telegram_id: String($json.telegram_id), name: $json.first_name }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2784,
+        2880
+      ],
+      "id": "a8133d0c-af7e-4697-ae9b-83f74c02f98b",
+      "name": "Upsert Customer",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "stn3o1ozupNrzBXr",
+          "name": "Bearer Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.18.0.1:8080/api/n8n/v1/quotations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ partner_id: ($json.data && $json.data.partner_id) || null, lines: $('Build Payload').first().json.lines, delivery_address: $('Build Payload').first().json.delivery_address }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3040,
+        2880
+      ],
+      "id": "042a0e1e-14fd-416a-8601-1b27bc22a366",
+      "name": "Create Quotation",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "stn3o1ozupNrzBXr",
+          "name": "Bearer Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $('Build Payload').first().json;\nconst r = $input.first()?.json || {};\nconst d = (r.data && typeof r.data === 'object') ? r.data : r;\n\nconst id = d.id || d.quotation_id || d.order_id || null;\nconst name = d.name || d.quotation_name || d.order_name || '';\nconst ok = !!id && !r.error && r.success !== false;\n\nconst fmt = (v) => Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });\nconst total = d.amount_total ?? p.total;\nconst currency = d.currency || p.currency || '';\n\nconst message = `📄 Quotation ${name} (Draft)\\nItems: ${p.item_count}\\nTotal: ${fmt(total)} ${currency}\\n📍 ${p.delivery_address}\\n\\nPlease confirm your order.`;\n\nreturn [{ json: {\n  ok,\n  quotation_id: id,\n  quotation_name: name,\n  message,\n  chat_id: p.chat_id,\n  telegram_id: p.telegram_id,\n  error: (r.error && (r.error.message || r.error)) || r.message || ''\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        2880
+      ],
+      "id": "b9ce5c13-c347-47c8-8f9e-cd33fc86bd79",
+      "name": "Check Quotation"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "1efdd986-181f-4737-8730-8b9b78c2403d",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        3552,
+        2880
+      ],
+      "id": "a613dd4e-a26d-43be-b502-a6830281d69a",
+      "name": "Quotation OK?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active_order AS (\n    SELECT id\n    FROM pending_orders\n    WHERE chat_id = $4::bigint\n      AND status = 'submitting'\n    ORDER BY id DESC\n    LIMIT 1\n),\nsave_quote AS (\n    INSERT INTO pending_order (\n        telegram_id, quotation_id, quotation_name, status, awaiting, updated_at\n    )\n    VALUES ($1::bigint, $2::int, $3::text, 'submitted', NULL, NOW())\n    ON CONFLICT (telegram_id)\n    DO UPDATE SET\n        quotation_id = EXCLUDED.quotation_id,\n        quotation_name = EXCLUDED.quotation_name,\n        status = 'submitted',\n        awaiting = NULL,\n        updated_at = NOW()\n    RETURNING telegram_id\n),\nfinish_order AS (\n    UPDATE pending_orders\n    SET status = 'submitted',\n        updated_at = NOW()\n    WHERE id = (SELECT id FROM active_order)\n    RETURNING id\n),\nclear_items AS (\n    DELETE FROM pending_order_items\n    WHERE order_id = (SELECT id FROM active_order)\n    RETURNING id\n)\nSELECT\n    (SELECT telegram_id FROM save_quote) AS telegram_id,\n    (SELECT id FROM finish_order) AS order_id,\n    (SELECT COUNT(*) FROM clear_items)::int AS cleared_items;",
+        "options": {
+          "queryReplacement": "={{\n  [\n    $('Check Quotation').first().json.telegram_id,\n    $('Check Quotation').first().json.quotation_id,\n    $('Check Quotation').first().json.quotation_name,\n    $('Route Intent').first().json.chat_id\n  ]\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3824,
+        2800
+      ],
+      "id": "32281636-6bdd-45e7-9060-394a8af26834",
+      "name": "Save Quotation",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://172.18.0.1:8080/api/n8n/v1/quotations/{{ $('Check Quotation').first().json.quotation_id }}/pdf",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4080,
+        2800
+      ],
+      "id": "c388b62d-97b8-4c91-ba60-6ba252354b40",
+      "name": "Get Quotation PDF",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "stn3o1ozupNrzBXr",
+          "name": "Bearer Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "c66599fa-3475-4cd3-b720-194806b7be6b",
+              "leftValue": "={{ $binary.data ? true : false }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        4336,
+        2800
+      ],
+      "id": "55b3ddc2-8540-4771-a326-b8847386746e",
+      "name": "PDF Ready?"
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "={{ $('Check Quotation').first().json.chat_id }}",
+        "binaryData": true,
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Confirm Order",
+                    "additionalFields": {
+                      "callback_data": "order_yes"
+                    }
+                  },
+                  {
+                    "text": "❌ Cancel",
+                    "additionalFields": {
+                      "callback_data": "order_no"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "={{ $('Check Quotation').first().json.message }}"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4592,
+        2752
+      ],
+      "id": "d619df3e-e417-4573-93b0-aac12657bb9e",
+      "name": "Send Quotation PDF",
+      "webhookId": "409a5391-62c5-487c-87de-0e2749fdd71e",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Check Quotation').first().json.chat_id }}",
+        "text": "={{ $('Check Quotation').first().json.message }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Confirm Order",
+                    "additionalFields": {
+                      "callback_data": "order_yes"
+                    }
+                  },
+                  {
+                    "text": "❌ Cancel",
+                    "additionalFields": {
+                      "callback_data": "order_no"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4592,
+        2928
+      ],
+      "id": "230353b7-001f-4dc3-bcbe-33466e9b5873",
+      "name": "Send Quotation Text",
+      "webhookId": "b74bac65-2b9d-454d-9f29-86f1f0f32f1e",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pending_orders\nSET status = 'checkout',\n    updated_at = NOW()\nWHERE chat_id = $1::bigint\n  AND status = 'submitting'\nRETURNING id, chat_id, status;",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3824,
+        3008
+      ],
+      "id": "80ca94d0-75e7-4def-83ce-ca980b80dea5",
+      "name": "Release Order",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Check Quotation').first().json.chat_id }}",
+        "text": "⚠️ We could not create your quotation right now.\nYour cart is saved — please try again in a moment.",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔁 Try Again",
+                    "additionalFields": {
+                      "callback_data": "submit_order"
+                    }
+                  },
+                  {
+                    "text": "🛒 View Cart",
+                    "additionalFields": {
+                      "callback_data": "view_cart"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4080,
+        3008
+      ],
+      "id": "60d49db0-1798-421b-893b-7f2b3672e570",
+      "name": "Quotation Failed",
+      "webhookId": "9e47b231-35d6-4b8f-bc46-9155e5f1698d",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT quotation_id, quotation_name, status\nFROM pending_order WHERE telegram_id = $1::bigint",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.telegram_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2000,
+        3360
+      ],
+      "id": "cf723c61-45c4-419a-a5f4-8b9c65d997d9",
+      "name": "Load Quotation",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $('Route Intent').first().json;\nconst r = $input.first()?.json || {};\nconst action = route.intent === 'confirmation_yes' ? 'confirm' : 'cancel';\nconst ok = r.status === 'submitted' && !!r.quotation_id;\n\nreturn [{ json: {\n  ok,\n  action,\n  quotation_id: r.quotation_id || null,\n  quotation_name: r.quotation_name || '',\n  chat_id: route.chat_id,\n  telegram_id: route.telegram_id\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        3360
+      ],
+      "id": "16078f9a-ded7-4ec2-9467-e4e06fc4f434",
+      "name": "Check Quotation State"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "6b9416b8-6ff0-43f9-900a-dfc8796e7fd4",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2512,
+        3360
+      ],
+      "id": "8def4030-36e5-4a04-96f3-57a8f65eb18a",
+      "name": "State OK?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://172.18.0.1:8080/api/n8n/v1/quotations/{{ $json.quotation_id }}/{{ $json.action }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ telegram_id: String($json.telegram_id) }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2784,
+        3296
+      ],
+      "id": "7906c0fb-81cf-47ed-be67-c77bfe110ad8",
+      "name": "Quotation Action",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "stn3o1ozupNrzBXr",
+          "name": "Bearer Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pending_order SET\n  status = CASE WHEN $2::boolean THEN 'closed' ELSE status END,\n  quotation_id = CASE WHEN $2::boolean THEN NULL ELSE quotation_id END,\n  updated_at = now()\nWHERE telegram_id = $1::bigint",
+        "options": {
+          "queryReplacement": "={{ [$('Check Quotation State').first().json.telegram_id, !!$('Quotation Action').first().json.data && !$('Quotation Action').first().json.error] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3040,
+        3296
+      ],
+      "id": "c8f42605-1172-4f3e-955e-c6512e1476e2",
+      "name": "Close Quotation",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Check Quotation State').first().json.chat_id }}",
+        "text": "={{ ($('Quotation Action').first().json.data && !$('Quotation Action').first().json.error) ? ($('Check Quotation State').first().json.action === 'confirm' ? '✅ Order confirmed!\\n\\nQuotation ' + $('Check Quotation State').first().json.quotation_name + ' is now a confirmed Sale Order.\\nThank you for your order! 🎉' : '❌ Quotation ' + $('Check Quotation State').first().json.quotation_name + ' has been cancelled.\\n\\nSend /start to place a new order.') : '⚠️ Sorry, we could not complete that action. Please try again or contact us.' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3296,
+        3296
+      ],
+      "id": "f6c0184d-1ce9-4bb3-b7c2-37ae253060e1",
+      "name": "Quotation Result",
+      "webhookId": "106073fa-daf2-42b7-8fc2-59cf8099055a",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "There is no quotation waiting for confirmation.\n\nSend /start to begin a new order.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2784,
+        3472
+      ],
+      "id": "8ea4b4b0-9afb-4d68-a07f-04ec8c8a62b6",
+      "name": "No Active Quotation",
+      "webhookId": "212b64b7-68a0-4d82-ae99-8175c9ef372b",
+      "credentials": {
+        "telegramApi": {
+          "id": "kucahLq0gRFkvdoQ",
+          "name": "Telegram_Bot_Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "qwen2.5:3b",
+          "mode": "list",
+          "cachedResultName": "qwen2.5:3b"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an intent classifier for a shop assistant bot.\nReply with exactly ONE JSON object and nothing else.\n\nIntents: greeting, product_search, other.\n- greeting: Hello, Hi, Hey, Good morning\n- product_search: the customer mentions a product, or asks about price, availability, buying or ordering a product\n- other: gibberish, thanks, unrelated, or no product can be identified\nNever invent product names. If unsure, use other.\n\nExamples:\nMessage: Hello\n{\"intent\":\"greeting\",\"product_name\":\"\"}\n\nMessage: Do you have iPhone 17?\n{\"intent\":\"product_search\",\"product_name\":\"iPhone 17\"}\n\nMessage: I want to buy 2 iPhone 17\n{\"intent\":\"product_search\",\"product_name\":\"iPhone 17\"}\n\nMessage: iPhone 17 ရှိလား\n{\"intent\":\"product_search\",\"product_name\":\"iPhone 17\"}\n\nMessage: ဖုန်းဈေးဘယ်လောက်လဲ\n{\"intent\":\"product_search\",\"product_name\":\"\"}\n\nMessage: asdfghjkl\n{\"intent\":\"other\",\"product_name\":\"\"}\n\nMessage: Thank you\n{\"intent\":\"other\",\"product_name\":\"\"}\n\nNow classify this message:\nMessage: {{ $('Route Intent').first().json.message_text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.ollama",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        3808
+      ],
+      "id": "f352bdc9-6c1b-4370-9c3b-48393680bad1",
+      "name": "Classify Text (Ollama)",
+      "credentials": {
+        "ollamaApi": {
+          "id": "KBg61VDc3OKplp5F",
+          "name": "Ollama account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $('Route Intent').first().json;\nconst raw = $input.first()?.json || {};\n\nfunction extract(r) {\n  const cands = [r.message?.content, r.content, r.output, r.text, r.response];\n  for (const c of cands) {\n    if (c && typeof c === 'object' && c.intent !== undefined) return c;\n    if (typeof c === 'string') {\n      const m = c.match(/\\{[\\s\\S]*\\}/);\n      if (m) { try { return JSON.parse(m[0]); } catch (e) {} }\n    }\n  }\n  return {};\n}\n\nconst res = extract(raw);\nlet ai_intent = ['greeting', 'product_search', 'order_request'].includes(res.intent) ? res.intent : 'other';\nconst term = String(res.product_name || '').trim();\n\nif (ai_intent === 'product_search' || ai_intent === 'order_request') {\n  ai_intent = term ? 'product_search' : 'other';\n}\n\nreturn [{ json: { ...route, ai_intent, search_term: term } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        3808
+      ],
+      "id": "dd273c7e-41df-48a0-968e-2e89c03ae7cd",
+      "name": "Parse AI Intent"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.ai_intent }}",
+                    "rightValue": "greeting",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "c39ec316-e705-4d3e-90c0-7000ff0e7934"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "greeting"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.ai_intent }}",
+                    "rightValue": "product_search",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b52b4f8a-5d25-4b7c-8c61-958d3f47a122"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "product_search"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 4
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.ai_intent }}",
+                    "rightValue": "other",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "80b732c9-8e48-4835-81c0-9f0b4d156094"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "other"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.5,
+      "position": [
+        2512,
+        3808
+      ],
+      "id": "54acc6d3-335d-4f11-9cf6-39dfc329dfd0",
+      "name": "AI Router"
+    },
+    {
+      "parameters": {
+        "content": "## AI ERP Assistant - Shopping Cart\n\n**Before activating**\n1. Run `schema.sql` in PostgreSQL.\n2. Select your Postgres credential in every Postgres node (or replace REPLACE_POSTGRES_CRED_ID in the JSON).\n3. Deactivate the old Telegram workflow (one bot = one webhook).\n4. Odoo needs: POST /quotations (with `lines`), GET /quotations/{id}/ POST /quotations/{id}/confirm and /cancel.\n\n**Settings** : `ENFORCE_STOCK` is at the top of the Format Products code node.",
+        "height": 380,
+        "width": 520,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        432,
+        1024
+      ],
+      "id": "53502bed-33fd-4e25-9cc9-7a397b9ecc0c",
+      "name": "Setup Notes"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH old AS (\n  SELECT awaiting, status\n  FROM pending_order\n  WHERE telegram_id = $1::bigint\n),\nclr AS (\n  UPDATE pending_order\n  SET awaiting = NULL, updated_at = now()\n  WHERE telegram_id = $1::bigint\n    AND awaiting IS NOT NULL\n  RETURNING 1\n)\nSELECT\n  $1::bigint AS telegram_id,\n  (SELECT awaiting FROM old) AS awaiting,\n  (SELECT status FROM old) AS cart_status;",
+        "options": {
+          "queryReplacement": "={{ [$json.telegram_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        0,
+        2032
+      ],
+      "id": "0010ceea-a7b7-4370-848e-4a66e52ef826",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "44a8aac3-2c92-4eee-bac3-12a099d233ba",
+              "leftValue": "={{ $json.need_address === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2512,
+        2304
+      ],
+      "id": "ff5a2988-8354-4d73-b0e8-3ede3d3d8860",
+      "name": "Need Address?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH active AS (\n  SELECT id FROM pending_orders\n  WHERE chat_id = $1::bigint AND status IN ('cart', 'checkout')\n  ORDER BY (status = 'cart') DESC, id DESC\n  LIMIT 1\n)\nSELECT i.product_id, i.product_name, i.quantity, i.price, i.currency,\n       i.quantity * i.price AS subtotal, o.delivery_address\nFROM pending_orders o\nJOIN pending_order_items i ON i.order_id = o.id\nWHERE o.id = (SELECT id FROM active)\nORDER BY i.id",
+        "options": {
+          "queryReplacement": "={{ [$('Route Intent').first().json.chat_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2784,
+        2432
+      ],
+      "id": "2aa9176f-b974-4256-b540-5120e8f4edf2",
+      "name": "Load Review",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "TOeqUXmyMApvpWn2",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Has Callback?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Load Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Callback?": {
+      "main": [
+        [
+          {
+            "node": "Answer Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Session": {
+      "main": [
+        [
+          {
+            "node": "Route Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Intent": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Greeting Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shopping Menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List Products",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Awaiting Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Products",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add To Cart",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Cart Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Awaiting Qty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Quantity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Remove Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Awaiting Address",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Address",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claim Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Quotation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Quotation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Text (Ollama)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [
+          {
+            "node": "Other Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Products": {
+      "main": [
+        [
+          {
+            "node": "Format Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Products": {
+      "main": [
+        [
+          {
+            "node": "Format Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Products": {
+      "main": [
+        [
+          {
+            "node": "Cache Products",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Product Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Product Card": {
+      "main": [
+        [
+          {
+            "node": "Shop Footer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Awaiting Search": {
+      "main": [
+        [
+          {
+            "node": "Ask Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add To Cart": {
+      "main": [
+        [
+          {
+            "node": "Added Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Cart Items": {
+      "main": [
+        [
+          {
+            "node": "Format Cart",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Cart": {
+      "main": [
+        [
+          {
+            "node": "Cart Empty?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cart Empty?": {
+      "main": [
+        [
+          {
+            "node": "Cart Empty Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cart Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cart Item": {
+      "main": [
+        [
+          {
+            "node": "Cart Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Awaiting Qty": {
+      "main": [
+        [
+          {
+            "node": "Ask Quantity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Quantity": {
+      "main": [
+        [
+          {
+            "node": "Load Cart Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Item": {
+      "main": [
+        [
+          {
+            "node": "Load Cart Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Awaiting Address": {
+      "main": [
+        [
+          {
+            "node": "Cart Has Items?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cart Has Items?": {
+      "main": [
+        [
+          {
+            "node": "Need Address?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cart Empty Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Address": {
+      "main": [
+        [
+          {
+            "node": "Format Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Review": {
+      "main": [
+        [
+          {
+            "node": "Order Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Order": {
+      "main": [
+        [
+          {
+            "node": "Build Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Payload": {
+      "main": [
+        [
+          {
+            "node": "Payload OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload OK?": {
+      "main": [
+        [
+          {
+            "node": "Upsert Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Submit Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Customer": {
+      "main": [
+        [
+          {
+            "node": "Create Quotation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Quotation": {
+      "main": [
+        [
+          {
+            "node": "Check Quotation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Quotation": {
+      "main": [
+        [
+          {
+            "node": "Quotation OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quotation OK?": {
+      "main": [
+        [
+          {
+            "node": "Save Quotation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Release Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Quotation": {
+      "main": [
+        [
+          {
+            "node": "Get Quotation PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Quotation PDF": {
+      "main": [
+        [
+          {
+            "node": "PDF Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF Ready?": {
+      "main": [
+        [
+          {
+            "node": "Send Quotation PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Quotation Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release Order": {
+      "main": [
+        [
+          {
+            "node": "Quotation Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Quotation": {
+      "main": [
+        [
+          {
+            "node": "Check Quotation State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Quotation State": {
+      "main": [
+        [
+          {
+            "node": "State OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "State OK?": {
+      "main": [
+        [
+          {
+            "node": "Quotation Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Active Quotation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quotation Action": {
+      "main": [
+        [
+          {
+            "node": "Close Quotation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Close Quotation": {
+      "main": [
+        [
+          {
+            "node": "Quotation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Text (Ollama)": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Intent": {
+      "main": [
+        [
+          {
+            "node": "AI Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Router": {
+      "main": [
+        [
+          {
+            "node": "Greeting Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Products",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Other Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need Address?": {
+      "main": [
+        [
+          {
+            "node": "Ask Address",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Review": {
+      "main": [
+        [
+          {
+            "node": "Format Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "2e3213d7-ff42-4f13-8250-5abaa5ff24bd",
+  "meta": {
+    "instanceId": "eb3cbeb3a20fa04e6935bdaa74755f3f717c929b8284f5cf6d31143877b0b5c5"
+  },
+  "nodeGroups": [],
+  "id": "hPKrCA7LxjV9oese",
+  "tags": []
+}
